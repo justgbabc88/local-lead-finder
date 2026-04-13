@@ -1,0 +1,30 @@
+# Railway service definitions for LocalLeadEngine.
+# Phase 1: only the `api` service is deployed.
+# Phases 2+ uncomment the Redis + worker services.
+
+[services.api]
+  source = "backend"
+  build.builder = "DOCKERFILE"
+  build.dockerfilePath = "Dockerfile"
+  deploy.startCommand = "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+  deploy.healthcheckPath = "/health"
+  deploy.restartPolicyType = "ON_FAILURE"
+
+# --- Phase 2+ services (uncomment when ready) ---
+
+# [services.redis]
+#   image = "redis:7-alpine"
+
+# [services.scrape-worker]
+#   source = "backend"
+#   build.builder = "DOCKERFILE"
+#   build.dockerfilePath = "Dockerfile"
+#   deploy.startCommand = "rq worker scrape_tasks --url $REDIS_URL"
+#   deploy.numReplicas = 10
+
+# [services.enrichment-worker]
+#   source = "backend"
+#   build.builder = "DOCKERFILE"
+#   build.dockerfilePath = "Dockerfile"
+#   deploy.startCommand = "rq worker enrichment_tasks --url $REDIS_URL"
+#   deploy.numReplicas = 2
