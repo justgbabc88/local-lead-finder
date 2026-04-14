@@ -1,13 +1,29 @@
-import { useQuery } from '@tanstack/react-query'
+import { Fragment } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import toast from 'react-hot-toast'
 import { api } from '@/lib/api'
 import type { Company, Contact } from '@/types'
 
-type CompanyDetail = Company & { contacts: Contact[] }
+type CompanyDetail = Company & { contacts: (Contact & { ai_opener?: string | null })[] }
 
 export function CompanyDetailPanel({ companyId }: { companyId: string }) {
+  const qc = useQueryClient()
   const { data, isLoading } = useQuery({
     queryKey: ['company', companyId],
     queryFn: () => api<CompanyDetail>(`/api/companies/${companyId}`),
+  })
+
+  const genOpener = useMutation({
+    mutationFn: (contactId: string) =>
+      api<{ ai_opener: string }>('/api/ai/personalize', {
+        method: 'POST',
+        body: JSON.stringify({ contact_id: contactId }),
+      }),
+    onSuccess: () => {
+      toast.success('Opener generated')
+      void qc.invalidateQueries({ queryKey: ['company', companyId] })
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed'),
   })
 
   if (isLoading) return <div className="p-4 text-sm text-slate-400">Loading…</div>
@@ -27,7 +43,7 @@ export function CompanyDetailPanel({ companyId }: { companyId: string }) {
         </div>
         {data.contacts.length === 0 ? (
           <div className="text-sm text-slate-500">
-            No contacts yet. Enrichment lands in Phase 3.
+            No contacts yet. Run Apollo or CompanyEnrich to populate.
           </div>
         ) : (
           <table className="w-full text-sm">
@@ -38,17 +54,37 @@ export function CompanyDetailPanel({ companyId }: { companyId: string }) {
                 <th className="text-left">Email</th>
                 <th className="text-left">Status</th>
                 <th className="text-left">Source</th>
+                <th />
               </tr>
             </thead>
             <tbody>
               {data.contacts.map((c) => (
-                <tr key={c.id} className="border-b border-slate-800 last:border-0">
-                  <td className="py-1.5">{c.full_name ?? [c.first_name, c.last_name].filter(Boolean).join(' ')}</td>
-                  <td>{c.title ?? '—'}</td>
-                  <td>{c.email ?? '—'}</td>
-                  <td><StatusBadge status={c.email_status} /></td>
-                  <td>{c.email_source ?? '—'}</td>
-                </tr>
+                <Fragment key={c.id}>
+                  <tr className="border-b border-slate-800 last:border-0">
+                    <td className="py-1.5">{c.full_name ?? [c.first_name, c.last_name].filter(Boolean).join(' ')}</td>
+                    <td>{c.title ?? '—'}</td>
+                    <td>{c.email ?? '—'}</td>
+                    <td><StatusBadge status={c.email_status} /></td>
+                    <td>{c.email_source ?? '—'}</td>
+                    <td className="text-right">
+                      <button
+                        className="badge bg-purple-500/10 text-purple-300 border border-purple-500/30 hover:bg-purple-500/20"
+                        disabled={genOpener.isPending}
+                        onClick={() => genOpener.mutate(c.id)}
+                        title="Generate AI cold-email opener"
+                      >
+                        ✨ Opener
+                      </button>
+                    </td>
+                  </tr>
+                  {c.ai_opener && (
+                    <tr className="border-b border-slate-800 last:border-0">
+                      <td colSpan={6} className="py-2 text-xs text-purple-200 italic">
+                        ✨ {c.ai_opener}
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               ))}
             </tbody>
           </table>

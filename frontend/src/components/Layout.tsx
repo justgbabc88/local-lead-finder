@@ -1,6 +1,7 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import { signOut } from '@/hooks/useAuth'
 import { useWorkspace } from '@/hooks/useWorkspace'
+import { NotificationBell } from './NotificationBell'
 import clsx from 'clsx'
 
 const NAV = [
@@ -8,6 +9,9 @@ const NAV = [
   { to: '/leads', label: 'Lead Database' },
   { to: '/validation', label: 'Validation' },
   { to: '/analytics', label: 'Analytics' },
+  { to: '/templates', label: 'Templates' },
+  { to: '/suppression', label: 'Suppression' },
+  { to: '/domain-health', label: 'Domain Health' },
   { to: '/settings', label: 'Settings' },
 ]
 
@@ -17,11 +21,14 @@ export function Layout() {
   return (
     <div className="flex h-screen">
       <aside className="w-60 shrink-0 bg-slate-950 border-r border-slate-800 flex flex-col">
-        <div className="px-4 py-5 border-b border-slate-800">
-          <div className="text-sm font-semibold tracking-wide text-indigo-400">
-            LocalLeadEngine
+        <div className="px-4 py-5 border-b border-slate-800 flex items-center justify-between">
+          <div>
+            <div className="text-sm font-semibold tracking-wide text-indigo-400">
+              LocalLeadEngine
+            </div>
+            <div className="text-xs text-slate-500 mt-0.5">v3</div>
           </div>
-          <div className="text-xs text-slate-500 mt-0.5">Phase 1 · Core Scraper</div>
+          <NotificationBell />
         </div>
 
         {workspaces.length > 1 && (
@@ -39,7 +46,7 @@ export function Layout() {
           </div>
         )}
 
-        <nav className="flex-1 px-2 py-3 space-y-1">
+        <nav className="flex-1 px-2 py-3 space-y-1 overflow-y-auto">
           {NAV.map((item) => (
             <NavLink
               key={item.to}

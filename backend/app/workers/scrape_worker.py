@@ -43,7 +43,7 @@ def _is_chain(name: str) -> bool:
 def _bump_counters(
     job_id: str, *, completed: int, failed: int, records_found: int, api_calls: int
 ) -> None:
-    get_supabase().rpc(
+    res = get_supabase().rpc(
         "bump_scrape_job_counters",
         {
             "p_job_id": job_id,
@@ -53,6 +53,25 @@ def _bump_counters(
             "p_api_calls": api_calls,
         },
     ).execute()
+
+    # On the transition to 'complete', fire an in-app + Slack notification.
+    rows = res.data or []
+    if rows and rows[0].get("status") == "complete":
+        try:
+            from app.services.notify import notify
+            job = get_supabase().table("scrape_jobs").select(
+                "workspace_id, records_found, niche_keywords, zip_codes"
+            ).eq("id", job_id).single().execute().data or {}
+            notify(
+                workspace_id=job["workspace_id"],
+                type="scrape_complete",
+                title=f"Scrape complete — {job.get('records_found', 0)} leads",
+                body=f"{len(job.get('niche_keywords') or [])} keyword(s) × "
+                     f"{len(job.get('zip_codes') or [])} zips.",
+                link="/leads",
+            )
+        except Exception as e:  # pragma: no cover
+            log.warning("finalize notification failed: %s", e)
 
 
 def _zip_centroid(zip_code: str) -> Optional[tuple[float, float]]:
