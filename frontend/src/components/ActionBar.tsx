@@ -3,6 +3,7 @@ import toast from 'react-hot-toast'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, apiRaw } from '@/lib/api'
 import { ConfirmEnrichmentModal } from './ConfirmEnrichmentModal'
+import { PushToBisonModal } from './PushToBisonModal'
 
 type Props = {
   selectedIds: string[]
@@ -22,6 +23,7 @@ type EnrichmentJob = {
 export function ActionBar({ selectedIds, onClear, exportParams }: Props) {
   const qc = useQueryClient()
   const [pending, setPending] = useState<EnrichmentJob | null>(null)
+  const [bisonOpen, setBisonOpen] = useState(false)
 
   const createJob = useMutation({
     mutationFn: (provider: 'apollo' | 'companyenrich') =>
@@ -115,6 +117,12 @@ export function ActionBar({ selectedIds, onClear, exportParams }: Props) {
           >
             {validate.isPending ? 'Validating…' : 'Validate Emails'}
           </button>
+          <button
+            className="btn-primary bg-rose-500/90 hover:bg-rose-500"
+            onClick={() => setBisonOpen(true)}
+          >
+            Push to Email Bison
+          </button>
           <button className="btn-secondary" onClick={() => void exportCsv()}>Export CSV</button>
           <button className="btn-ghost" onClick={onClear}>Clear</button>
         </div>
@@ -126,6 +134,15 @@ export function ActionBar({ selectedIds, onClear, exportParams }: Props) {
           onCancel={() => setPending(null)}
           onConfirm={() => runJob.mutate(pending.id)}
           confirming={runJob.isPending}
+        />
+      )}
+      {bisonOpen && (
+        <PushToBisonModal
+          selectedCompanyIds={selectedIds}
+          onClose={() => {
+            setBisonOpen(false)
+            onClear()
+          }}
         />
       )}
     </>

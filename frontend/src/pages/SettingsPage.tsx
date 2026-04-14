@@ -10,6 +10,7 @@ export function SettingsPage() {
       <h1 className="text-2xl font-semibold">Settings</h1>
       <GoogleKeysCard />
       <ThirdPartyKeysCard />
+      <IntegrationsCard />
       <EnrichmentDefaultsCard />
     </div>
   )
@@ -201,6 +202,62 @@ function ThirdPartyKeysCard() {
         >
           Save keys
         </button>
+      </div>
+    </section>
+  )
+}
+
+// ---------- Integrations: Email Bison base URL + Slack webhook ----------
+
+function IntegrationsCard() {
+  const qc = useQueryClient()
+  const settings = useQuery({
+    queryKey: ['workspace-settings'],
+    queryFn: () => api<WorkspaceSettings & { email_bison_base_url?: string; slack_webhook_url?: string }>('/api/settings'),
+  })
+  const [baseUrl, setBaseUrl] = useState('')
+  const [slack, setSlack] = useState('')
+  const [hydrated, setHydrated] = useState(false)
+
+  useEffect(() => {
+    if (hydrated || !settings.data) return
+    setBaseUrl(settings.data.email_bison_base_url ?? '')
+    setSlack(settings.data.slack_webhook_url ?? '')
+    setHydrated(true)
+  }, [settings.data, hydrated])
+
+  const save = useMutation({
+    mutationFn: () =>
+      api('/api/settings', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          email_bison_base_url: baseUrl || null,
+          slack_webhook_url: slack || null,
+        }),
+      }),
+    onSuccess: () => {
+      toast.success('Saved')
+      void qc.invalidateQueries({ queryKey: ['workspace-settings'] })
+    },
+  })
+
+  return (
+    <section className="card space-y-4">
+      <h2 className="font-medium">Integrations</h2>
+      <div className="grid md:grid-cols-2 gap-3">
+        <div>
+          <label className="label">Email Bison base URL</label>
+          <input className="input" placeholder="https://bison.yourdomain.com"
+            value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} />
+        </div>
+        <div>
+          <label className="label">Slack webhook URL (job alerts)</label>
+          <input className="input" placeholder="https://hooks.slack.com/services/..."
+            value={slack} onChange={(e) => setSlack(e.target.value)} />
+        </div>
+      </div>
+      <div className="flex justify-end">
+        <button className="btn-primary" onClick={() => save.mutate()} disabled={save.isPending}>Save</button>
       </div>
     </section>
   )

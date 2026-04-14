@@ -7,6 +7,7 @@ const NAV = [
   { to: '/scrape', label: 'Search & Scrape' },
   { to: '/leads', label: 'Lead Database' },
   { to: '/validation', label: 'Validation' },
+  { to: '/analytics', label: 'Analytics' },
   { to: '/settings', label: 'Settings' },
 ]
 

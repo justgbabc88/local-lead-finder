@@ -111,6 +111,8 @@ class WorkspaceSettingsUpdate(BaseModel):
     apollo_api_key: Optional[str] = None
     companyenrich_api_key: Optional[str] = None
     email_bison_api_key: Optional[str] = None
+    email_bison_base_url: Optional[str] = None
+    email_bison_field_mapping: Optional[dict] = None
     validation_provider: Optional[str] = None
     neverbounce_api_key: Optional[str] = None
     zerobounce_api_key: Optional[str] = None

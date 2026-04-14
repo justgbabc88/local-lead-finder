@@ -12,6 +12,7 @@ import { ScrapePage } from '@/pages/ScrapePage'
 import { LeadsPage } from '@/pages/LeadsPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { ValidationPage } from '@/pages/ValidationPage'
+import { AnalyticsPage } from '@/pages/AnalyticsPage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -40,6 +41,7 @@ function ProtectedRoutes() {
         <Route path="/scrape" element={<ScrapePage />} />
         <Route path="/leads" element={<LeadsPage />} />
         <Route path="/validation" element={<ValidationPage />} />
+        <Route path="/analytics" element={<AnalyticsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/scrape" replace />} />
       </Route>
