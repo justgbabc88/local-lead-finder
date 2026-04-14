@@ -11,6 +11,7 @@ import { WorkspaceBootstrapPage } from '@/pages/WorkspaceBootstrapPage'
 import { ScrapePage } from '@/pages/ScrapePage'
 import { LeadsPage } from '@/pages/LeadsPage'
 import { SettingsPage } from '@/pages/SettingsPage'
+import { ValidationPage } from '@/pages/ValidationPage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -38,6 +39,7 @@ function ProtectedRoutes() {
         <Route path="/" element={<Navigate to="/scrape" replace />} />
         <Route path="/scrape" element={<ScrapePage />} />
         <Route path="/leads" element={<LeadsPage />} />
+        <Route path="/validation" element={<ValidationPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/scrape" replace />} />
       </Route>

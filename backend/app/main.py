@@ -6,7 +6,10 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.api import companies, enrichment, scrape, settings as settings_api, workspaces, zips
+from app.api import (
+    companies, enrichment, scrape, settings as settings_api,
+    validation, workspaces, zips,
+)
 from app.api.envelope import err
 from app.config import get_settings
 
@@ -55,3 +58,4 @@ app.include_router(companies.router)
 app.include_router(settings_api.router)
 app.include_router(zips.router)
 app.include_router(enrichment.router)
+app.include_router(validation.router)

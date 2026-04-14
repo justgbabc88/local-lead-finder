@@ -10,6 +10,8 @@ type Props = {
   exportParams: Record<string, string>
 }
 
+type ContactLite = { id: string; email: string | null }
+
 type EnrichmentJob = {
   id: string
   provider: 'apollo' | 'companyenrich'
@@ -42,6 +44,32 @@ export function ActionBar({ selectedIds, onClear, exportParams }: Props) {
       void qc.invalidateQueries({ queryKey: ['enrichment-jobs'] })
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed to start'),
+  })
+
+  // Validate: fetch contacts across selected companies, then create a validation job.
+  const validate = useMutation({
+    mutationFn: async () => {
+      // Pull contact lists per selected company — backend endpoint returns
+      // the company detail (including contacts). Small N so sequential is fine.
+      const contactIds: string[] = []
+      for (const id of selectedIds) {
+        const detail = await api<{ contacts: ContactLite[] }>(`/api/companies/${id}`)
+        for (const c of detail.contacts) {
+          if (c.email) contactIds.push(c.id)
+        }
+      }
+      if (contactIds.length === 0) throw new Error('No emails in selection to validate')
+      return api<{ total_emails: number }>('/api/validation/jobs', {
+        method: 'POST',
+        body: JSON.stringify({ contact_ids: contactIds }),
+      })
+    },
+    onSuccess: (res) => {
+      toast.success(`Validating ${res.total_emails} emails`)
+      onClear()
+      void qc.invalidateQueries({ queryKey: ['validation-summary'] })
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed'),
   })
 
   async function exportCsv() {
@@ -79,6 +107,13 @@ export function ActionBar({ selectedIds, onClear, exportParams }: Props) {
             onClick={() => createJob.mutate('companyenrich')}
           >
             Enrich with CompanyEnrich
+          </button>
+          <button
+            className="btn-primary bg-amber-500/90 hover:bg-amber-500"
+            disabled={validate.isPending}
+            onClick={() => validate.mutate()}
+          >
+            {validate.isPending ? 'Validating…' : 'Validate Emails'}
           </button>
           <button className="btn-secondary" onClick={() => void exportCsv()}>Export CSV</button>
           <button className="btn-ghost" onClick={onClear}>Clear</button>

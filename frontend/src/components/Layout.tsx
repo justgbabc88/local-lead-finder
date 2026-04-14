@@ -6,6 +6,7 @@ import clsx from 'clsx'
 const NAV = [
   { to: '/scrape', label: 'Search & Scrape' },
   { to: '/leads', label: 'Lead Database' },
+  { to: '/validation', label: 'Validation' },
   { to: '/settings', label: 'Settings' },
 ]
 

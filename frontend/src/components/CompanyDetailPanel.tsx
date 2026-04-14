@@ -46,7 +46,7 @@ export function CompanyDetailPanel({ companyId }: { companyId: string }) {
                   <td className="py-1.5">{c.full_name ?? [c.first_name, c.last_name].filter(Boolean).join(' ')}</td>
                   <td>{c.title ?? '—'}</td>
                   <td>{c.email ?? '—'}</td>
-                  <td>{c.email_status ?? '—'}</td>
+                  <td><StatusBadge status={c.email_status} /></td>
                   <td>{c.email_source ?? '—'}</td>
                 </tr>
               ))}
@@ -56,6 +56,19 @@ export function CompanyDetailPanel({ companyId }: { companyId: string }) {
       </div>
     </div>
   )
+}
+
+function StatusBadge({ status }: { status?: string | null }) {
+  if (!status) return <span className="text-xs text-slate-600">—</span>
+  const cls: Record<string, string> = {
+    valid: 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/30',
+    'catch-all': 'bg-orange-500/10 text-orange-300 border border-orange-500/30',
+    risky: 'bg-amber-500/10 text-amber-300 border border-amber-500/30',
+    invalid: 'bg-rose-500/10 text-rose-300 border border-rose-500/30',
+    unknown: 'bg-slate-500/10 text-slate-300 border border-slate-500/30',
+    unvalidated: 'bg-slate-600/20 text-slate-400 border border-slate-700',
+  }
+  return <span className={`badge ${cls[status] ?? cls.unvalidated}`}>{status}</span>
 }
 
 function Field({ label, value, href }: { label: string; value?: string | null; href?: string | null }) {
