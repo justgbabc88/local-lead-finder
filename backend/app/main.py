@@ -7,7 +7,7 @@ from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api import (
-    companies, email_bison, enrichment, phase6, scrape,
+    companies, domain_health, email_bison, enrichment, phase6, scrape,
     settings as settings_api, validation, workspaces, zips,
 )
 from app.api.envelope import err
@@ -61,3 +61,4 @@ app.include_router(enrichment.router)
 app.include_router(validation.router)
 app.include_router(email_bison.router)
 app.include_router(phase6.router)
+app.include_router(domain_health.router)

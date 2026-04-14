@@ -15,6 +15,7 @@ import { ValidationPage } from '@/pages/ValidationPage'
 import { AnalyticsPage } from '@/pages/AnalyticsPage'
 import { TemplatesPage } from '@/pages/TemplatesPage'
 import { SuppressionPage } from '@/pages/SuppressionPage'
+import { DomainHealthPage } from '@/pages/DomainHealthPage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -46,6 +47,7 @@ function ProtectedRoutes() {
         <Route path="/analytics" element={<AnalyticsPage />} />
         <Route path="/templates" element={<TemplatesPage />} />
         <Route path="/suppression" element={<SuppressionPage />} />
+        <Route path="/domain-health" element={<DomainHealthPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/scrape" replace />} />
       </Route>
