@@ -1,6 +1,4 @@
 # Railway service definitions for LocalLeadEngine.
-# Phase 1: only the `api` service is deployed.
-# Phases 2+ uncomment the Redis + worker services.
 
 [services.api]
   source = "backend"
@@ -10,21 +8,36 @@
   deploy.healthcheckPath = "/health"
   deploy.restartPolicyType = "ON_FAILURE"
 
-# --- Phase 2+ services (uncomment when ready) ---
+# --- Phase 2 ---
+# Redis: used by RQ for the scrape/enrichment queues.
+[services.redis]
+  image = "redis:7-alpine"
 
-# [services.redis]
-#   image = "redis:7-alpine"
+# Parallel scrape workers — scale via Railway's `replicas` / `numReplicas`.
+# Each worker dequeues one task at a time; scale horizontally for throughput.
+[services.scrape-worker]
+  source = "backend"
+  build.builder = "DOCKERFILE"
+  build.dockerfilePath = "Dockerfile"
+  deploy.startCommand = "rq worker scrape_tasks --url $REDIS_URL --worker-ttl 1200"
+  deploy.numReplicas = 10
+  deploy.restartPolicyType = "ON_FAILURE"
 
-# [services.scrape-worker]
-#   source = "backend"
-#   build.builder = "DOCKERFILE"
-#   build.dockerfilePath = "Dockerfile"
-#   deploy.startCommand = "rq worker scrape_tasks --url $REDIS_URL"
-#   deploy.numReplicas = 10
+# Enrichment queue — thin for Phase 2; Phase 3 uses this for Apollo/CompanyEnrich.
+[services.enrichment-worker]
+  source = "backend"
+  build.builder = "DOCKERFILE"
+  build.dockerfilePath = "Dockerfile"
+  deploy.startCommand = "rq worker enrichment_tasks --url $REDIS_URL --worker-ttl 1200"
+  deploy.numReplicas = 2
+  deploy.restartPolicyType = "ON_FAILURE"
 
-# [services.enrichment-worker]
-#   source = "backend"
-#   build.builder = "DOCKERFILE"
-#   build.dockerfilePath = "Dockerfile"
-#   deploy.startCommand = "rq worker enrichment_tasks --url $REDIS_URL"
-#   deploy.numReplicas = 2
+# Scheduler — registers the daily API key quota reset, then supervises cron jobs.
+# One replica only; rq-scheduler takes its own lock.
+[services.scheduler]
+  source = "backend"
+  build.builder = "DOCKERFILE"
+  build.dockerfilePath = "Dockerfile"
+  deploy.startCommand = "python -m app.workers.scheduler && rqscheduler --url $REDIS_URL -i 60"
+  deploy.numReplicas = 1
+  deploy.restartPolicyType = "ON_FAILURE"

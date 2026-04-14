@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import type { ScrapeJob, ZipRow } from '@/types'
+import type { GoogleApiKey, ScrapeJob, ZipRow } from '@/types'
+import { LiveJobCard } from '@/components/LiveJobCard'
 import clsx from 'clsx'
 
 const US_STATES = [
@@ -33,19 +34,29 @@ export function ScrapePage() {
   const [minReviews, setMinReviews] = useState<number | ''>('')
   const [excludeChains, setExcludeChains] = useState(false)
   const [twoPass, setTwoPass] = useState(true)
+  const [workerCount, setWorkerCount] = useState(10)
   const [stateToAdd, setStateToAdd] = useState<string>('')
 
   const zips = useMemo(() => parseZipCodes(zipInput), [zipInput])
+  const taskCount = keywords.length * zips.length
 
   const jobs = useQuery({
     queryKey: ['scrape-jobs'],
     queryFn: () => api<ScrapeJob[]>('/api/scrape/jobs?limit=10'),
-    refetchInterval: (q) => {
-      const data = q.state.data as ScrapeJob[] | undefined
-      const hasActive = data?.some((j) => j.status === 'queued' || j.status === 'running')
-      return hasActive ? 3000 : false
-    },
+    // Realtime updates push live state — a slow background refetch covers row
+    // inserts (newly-created jobs) that aren't covered by the single-row channel.
+    refetchInterval: 15_000,
   })
+
+  const keys = useQuery({
+    queryKey: ['google-keys'],
+    queryFn: () => api<GoogleApiKey[]>('/api/settings/google-keys'),
+  })
+
+  const activeJob = (jobs.data ?? []).find((j) => j.status === 'queued' || j.status === 'running')
+  const usableKeys = (keys.data ?? []).filter(
+    (k) => k.status === 'active' && k.calls_today < k.daily_quota,
+  )
 
   const createJob = useMutation({
     mutationFn: () =>
@@ -59,14 +70,23 @@ export function ScrapePage() {
           min_reviews: minReviews === '' ? null : minReviews,
           exclude_chains: excludeChains,
           two_pass_mode: twoPass,
-          worker_count: 1, // Phase 1 = single worker
+          worker_count: workerCount,
         }),
       }),
     onSuccess: () => {
-      toast.success('Scrape job started')
+      toast.success('Scrape job queued')
       void qc.invalidateQueries({ queryKey: ['scrape-jobs'] })
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed to start job'),
+  })
+
+  const cancelJob = useMutation({
+    mutationFn: (jobId: string) =>
+      api(`/api/scrape/jobs/${jobId}/cancel`, { method: 'POST' }),
+    onSuccess: () => {
+      toast.success('Cancelling — in-flight tasks may still complete')
+      void qc.invalidateQueries({ queryKey: ['scrape-jobs'] })
+    },
   })
 
   async function addStateZips() {
@@ -75,9 +95,7 @@ export function ScrapePage() {
       const rows = await api<ZipRow[]>(`/api/zips?state=${stateToAdd}&limit=5000`)
       const existing = new Set(zips)
       const merged = [...zips]
-      for (const r of rows) {
-        if (!existing.has(r.zip)) merged.push(r.zip)
-      }
+      for (const r of rows) if (!existing.has(r.zip)) merged.push(r.zip)
       setZipInput(merged.join(', '))
       toast.success(`Added ${rows.length} zips from ${stateToAdd}`)
     } catch (err) {
@@ -92,11 +110,27 @@ export function ScrapePage() {
     setKeywordInput('')
   }
 
-  const canLaunch = keywords.length > 0 && zips.length > 0 && !createJob.isPending
+  // Estimated speed/cost — rough, but useful as a live indicator.
+  // ~20 results/page × 3 pages = ~60 records per task; ~3 API calls per task (text search paginated).
+  // Throughput per worker: ~1 task per 5s realistic (incl. network). Google New Places v1 ~$0.032/call.
+  const estRate = workerCount * (60 / 5) // records per second across all workers
+  const estSecs = taskCount > 0 && workerCount > 0 ? Math.ceil(taskCount / (workerCount * 0.2)) : 0
+  const estCost = taskCount * 3 * 0.032 // rough: 3 calls/task
+
+  const canLaunch = keywords.length > 0 && zips.length > 0 && !createJob.isPending && !activeJob
 
   return (
     <div className="p-6 space-y-6 max-w-6xl">
-      <h1 className="text-2xl font-semibold">Search &amp; Scrape</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-semibold">Search &amp; Scrape</h1>
+        {(keys.data?.length ?? 0) > 0 && usableKeys.length < 2 && (
+          <span className="badge bg-amber-500/10 text-amber-300 border border-amber-500/30">
+            ⚠ Only {usableKeys.length} API key{usableKeys.length === 1 ? '' : 's'} with remaining quota
+          </span>
+        )}
+      </div>
+
+      {activeJob && <LiveJobCard initial={activeJob} />}
 
       <div className="grid md:grid-cols-2 gap-6">
         <div className="card space-y-4">
@@ -127,9 +161,7 @@ export function ScrapePage() {
                 ))}
               </select>
             </div>
-            <button className="btn-secondary" type="button" onClick={() => void addStateZips()}>
-              Add
-            </button>
+            <button className="btn-secondary" type="button" onClick={() => void addStateZips()}>Add</button>
           </div>
         </div>
 
@@ -142,10 +174,7 @@ export function ScrapePage() {
               value={keywordInput}
               onChange={(e) => setKeywordInput(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault()
-                  addKeyword()
-                }
+                if (e.key === 'Enter') { e.preventDefault(); addKeyword() }
               }}
             />
             <button type="button" className="btn-secondary" onClick={addKeyword}>Add</button>
@@ -172,22 +201,13 @@ export function ScrapePage() {
         <div className="grid md:grid-cols-4 gap-4">
           <div>
             <label className="label">Radius: {radius} mi</label>
-            <input
-              type="range"
-              min={1}
-              max={50}
-              value={radius}
-              onChange={(e) => setRadius(Number(e.target.value))}
-              className="w-full"
-            />
+            <input type="range" min={1} max={50} value={radius}
+              onChange={(e) => setRadius(Number(e.target.value))} className="w-full" />
           </div>
           <div>
             <label className="label">Min rating</label>
-            <select
-              className="input"
-              value={minRating}
-              onChange={(e) => setMinRating(e.target.value === '' ? '' : Number(e.target.value))}
-            >
+            <select className="input" value={minRating}
+              onChange={(e) => setMinRating(e.target.value === '' ? '' : Number(e.target.value))}>
               <option value="">Any</option>
               <option value={3}>3.0+</option>
               <option value={3.5}>3.5+</option>
@@ -197,20 +217,16 @@ export function ScrapePage() {
           </div>
           <div>
             <label className="label">Min reviews</label>
-            <input
-              type="number"
-              min={0}
-              className="input"
-              value={minReviews}
-              onChange={(e) => setMinReviews(e.target.value === '' ? '' : Number(e.target.value))}
-            />
+            <input type="number" min={0} className="input" value={minReviews}
+              onChange={(e) => setMinReviews(e.target.value === '' ? '' : Number(e.target.value))} />
           </div>
           <div className="flex flex-col justify-end gap-2">
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={excludeChains} onChange={(e) => setExcludeChains(e.target.checked)} />
               Exclude chains
             </label>
-            <label className="flex items-center gap-2 text-sm" title="Skip Place Details calls now; fetch them later on-demand to save API cost">
+            <label className="flex items-center gap-2 text-sm"
+              title="Skip Place Details; fetch later on-demand to save API cost">
               <input type="checkbox" checked={twoPass} onChange={(e) => setTwoPass(e.target.checked)} />
               Two-pass mode (save API cost)
             </label>
@@ -218,16 +234,34 @@ export function ScrapePage() {
         </div>
       </div>
 
+      <div className="card space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="font-medium">Parallelism</h2>
+          <span className="text-sm text-slate-400">{workerCount} worker{workerCount === 1 ? '' : 's'}</span>
+        </div>
+        <input type="range" min={1} max={50} value={workerCount}
+          onChange={(e) => setWorkerCount(Number(e.target.value))} className="w-full" />
+        <div className="grid grid-cols-3 text-xs text-slate-400">
+          <div><b className="text-slate-200">~{estRate.toFixed(0)}</b> records/sec (peak)</div>
+          <div>
+            Tasks take <b className="text-slate-200">~{formatSecs(estSecs)}</b>
+          </div>
+          <div className="text-right">Est cost <b className="text-slate-200">${estCost.toFixed(2)}</b></div>
+        </div>
+        <p className="text-xs text-slate-500">
+          Phase 2: tasks fan out to Railway worker replicas via Redis. Bump replica
+          count in the Railway dashboard to raise the ceiling.
+        </p>
+      </div>
+
       <div className="flex items-center justify-between">
         <div className="text-sm text-slate-400">
-          {keywords.length > 0 && zips.length > 0 ? (
-            <>
-              Will dispatch <b>{keywords.length * zips.length}</b> tasks
-              ({keywords.length} keyword{keywords.length === 1 ? '' : 's'} × {zips.length} zip{zips.length === 1 ? '' : 's'}).
-            </>
+          {taskCount > 0 ? (
+            <>Will dispatch <b>{taskCount}</b> tasks ({keywords.length} × {zips.length}).</>
           ) : (
             <>Add at least one keyword and one zip code.</>
           )}
+          {activeJob && <span className="ml-2 text-amber-300">A job is already running.</span>}
         </div>
         <button
           type="button"
@@ -235,7 +269,7 @@ export function ScrapePage() {
           disabled={!canLaunch}
           onClick={() => createJob.mutate()}
         >
-          {createJob.isPending ? 'Launching…' : 'Launch Scrape'}
+          {createJob.isPending ? 'Queuing…' : 'Launch Scrape'}
         </button>
       </div>
 
@@ -260,24 +294,38 @@ export function ScrapePage() {
                 <th className="text-right">API calls</th>
                 <th className="text-right">Cost</th>
                 <th className="text-right">Started</th>
+                <th />
               </tr>
             </thead>
             <tbody>
               {jobs.data?.map((j) => (
-                <tr key={j.id} className="border-b border-slate-800 last:border-0">
-                  <td className="py-2">
-                    <span className={clsx('badge', statusClass(j.status))}>{j.status}</span>
-                  </td>
-                  <td className="truncate max-w-[160px]">{j.niche_keywords.join(', ')}</td>
-                  <td>{j.zip_codes.length}</td>
-                  <td className="text-right">{j.completed_tasks}/{j.total_tasks}</td>
-                  <td className="text-right">{j.records_found}</td>
-                  <td className="text-right">{j.api_calls_made}</td>
-                  <td className="text-right">${j.estimated_cost_usd.toFixed(2)}</td>
-                  <td className="text-right text-xs text-slate-400">
-                    {j.started_at ? new Date(j.started_at).toLocaleString() : '—'}
-                  </td>
-                </tr>
+                <Fragment key={j.id}>
+                  <tr className="border-b border-slate-800 last:border-0">
+                    <td className="py-2">
+                      <span className={clsx('badge', statusClass(j.status))}>{j.status}</span>
+                    </td>
+                    <td className="truncate max-w-[160px]">{j.niche_keywords.join(', ')}</td>
+                    <td>{j.zip_codes.length}</td>
+                    <td className="text-right">{j.completed_tasks}/{j.total_tasks}</td>
+                    <td className="text-right">{j.records_found}</td>
+                    <td className="text-right">{j.api_calls_made}</td>
+                    <td className="text-right">${j.estimated_cost_usd.toFixed(2)}</td>
+                    <td className="text-right text-xs text-slate-400">
+                      {j.started_at ? new Date(j.started_at).toLocaleString() : '—'}
+                    </td>
+                    <td className="text-right">
+                      {(j.status === 'queued' || j.status === 'running') && (
+                        <button
+                          className="btn-ghost text-xs"
+                          onClick={() => cancelJob.mutate(j.id)}
+                          disabled={cancelJob.isPending}
+                        >
+                          Cancel
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                </Fragment>
               ))}
             </tbody>
           </table>
@@ -300,4 +348,12 @@ function statusClass(status: ScrapeJob['status']) {
     case 'cancelled':
       return 'bg-amber-500/10 text-amber-300 border border-amber-500/30'
   }
+}
+
+function formatSecs(s: number): string {
+  if (s <= 0) return '—'
+  if (s < 60) return `${s}s`
+  const m = Math.round(s / 60)
+  if (m < 60) return `${m}m`
+  return `${Math.floor(m / 60)}h ${m % 60}m`
 }

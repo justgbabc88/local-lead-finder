@@ -1,21 +1,24 @@
 """Scrape job endpoints."""
+import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.deps import CurrentUser, require_user
 from app.api.envelope import ok
+from app.config import get_settings
 from app.db.supabase_client import get_supabase
 from app.models.schemas import CompanyDetailsRequest, ScrapeJobCreate
+from app.queue import get_scrape_queue
 from app.services.scraper import fetch_details_for_companies, run_scrape_job
 
+log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/scrape", tags=["scrape"])
 
 
 @router.post("/jobs", status_code=status.HTTP_201_CREATED)
 async def create_scrape_job(
     body: ScrapeJobCreate,
-    background: BackgroundTasks,
     user: CurrentUser = Depends(require_user),
 ):
     sb = get_supabase()
@@ -49,9 +52,20 @@ async def create_scrape_job(
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Failed to create job")
     job = res.data[0]
 
-    # Phase 1: run synchronously in-process as a FastAPI background task.
-    # Phase 2 will swap this for a Redis queue + parallel Railway workers.
-    background.add_task(run_scrape_job, job["id"])
+    # Phase 2: enqueue the coordinator, which fans tasks into the scrape queue.
+    # If Redis is unreachable, fall back to the in-process sync runner so Phase 1
+    # setups keep working without Redis configured.
+    settings = get_settings()
+    try:
+        get_scrape_queue().enqueue(
+            "app.workers.coordinator.fan_out",
+            job["id"],
+            job_timeout=settings.worker_job_timeout,
+        )
+    except Exception as e:  # pragma: no cover
+        log.warning("Redis unavailable, falling back to in-process scrape: %s", e)
+        import asyncio
+        asyncio.create_task(run_scrape_job(job["id"]))
 
     return ok(job)
 

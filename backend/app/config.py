@@ -12,8 +12,14 @@ class Settings(BaseSettings):
     supabase_anon_key: str = ""
     supabase_jwt_secret: str
 
-    # Google Places (fallback key for Phase 1 — Phase 2+ uses the DB key pool)
+    # Google Places (fallback key — Phase 2+ prefers the DB key pool)
     google_places_api_key: str = ""
+
+    # Redis / RQ (Phase 2+)
+    redis_url: str = "redis://localhost:6379/0"
+    scrape_queue_name: str = "scrape_tasks"
+    enrichment_queue_name: str = "enrichment_tasks"
+    worker_job_timeout: int = 900  # seconds per task — covers 3-page Places lookup
 
     # CORS — comma-separated list of allowed origins
     cors_origins: str = "http://localhost:5173"

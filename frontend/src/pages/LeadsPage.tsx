@@ -1,8 +1,10 @@
-import { Fragment, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { Fragment, useEffect, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, apiRaw } from '@/lib/api'
 import type { Company } from '@/types'
 import { CompanyDetailPanel } from '@/components/CompanyDetailPanel'
+import { useNewCompanies } from '@/hooks/useJobProgress'
+import { useWorkspace } from '@/hooks/useWorkspace'
 import clsx from 'clsx'
 
 type Filters = {
@@ -16,10 +18,20 @@ type Filters = {
 const EMPTY: Filters = { search: '', state: '', zip: '', minRating: '', minReviews: '' }
 
 export function LeadsPage() {
+  const qc = useQueryClient()
+  const { active } = useWorkspace()
   const [filters, setFilters] = useState<Filters>(EMPTY)
   const [applied, setApplied] = useState<Filters>(EMPTY)
   const [page, setPage] = useState(1)
   const [expanded, setExpanded] = useState<string | null>(null)
+
+  // Realtime: when new companies stream in during an active scrape, invalidate
+  // the first-page query so the user sees them without hitting refresh.
+  const live = useNewCompanies(active?.id ?? null, { size: 10 })
+  useEffect(() => {
+    if (live.length === 0 || page !== 1) return
+    void qc.invalidateQueries({ queryKey: ['companies'] })
+  }, [live.length, page, qc])
 
   const list = useQuery({
     queryKey: ['companies', applied, page],
@@ -58,7 +70,14 @@ export function LeadsPage() {
   return (
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Lead Database</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-semibold">Lead Database</h1>
+          {live.length > 0 && (
+            <span className="badge bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 animate-pulse">
+              +{live.length} new
+            </span>
+          )}
+        </div>
         <button className="btn-secondary" onClick={() => void exportCsv()}>Export CSV</button>
       </div>
 
