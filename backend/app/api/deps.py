@@ -1,4 +1,5 @@
 """Shared FastAPI dependencies: auth, workspace resolution."""
+import logging
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any, Optional
@@ -7,6 +8,8 @@ from fastapi import Depends, Header, HTTPException, status
 
 from app.config import get_settings
 from app.db.supabase_client import get_supabase
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -26,7 +29,8 @@ class CurrentUser(AuthedUser):
 @lru_cache
 def _jwks_client() -> jwt.PyJWKClient:
     settings = get_settings()
-    return jwt.PyJWKClient(f"{settings.supabase_url}/auth/v1/.well-known/jwks.json")
+    base = settings.supabase_url.rstrip("/")
+    return jwt.PyJWKClient(f"{base}/auth/v1/.well-known/jwks.json")
 
 
 def _decode_jwt(token: str) -> dict[str, Any]:
@@ -36,7 +40,13 @@ def _decode_jwt(token: str) -> dict[str, Any]:
         if alg == "HS256":
             key: Any = settings.supabase_jwt_secret
         else:
-            key = _jwks_client().get_signing_key_from_jwt(token).key
+            try:
+                key = _jwks_client().get_signing_key_from_jwt(token).key
+            except jwt.PyJWKClientError as e:
+                logger.warning("JWKS lookup failed: %s", e)
+                raise HTTPException(
+                    status.HTTP_401_UNAUTHORIZED, f"Unable to verify token: {e}"
+                )
         return jwt.decode(token, key, algorithms=[alg], audience="authenticated")
     except jwt.ExpiredSignatureError:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token expired")
