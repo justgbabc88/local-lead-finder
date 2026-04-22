@@ -26,7 +26,12 @@ class CurrentUser(AuthedUser):
 @lru_cache
 def _jwks_client() -> jwt.PyJWKClient:
     settings = get_settings()
-    return jwt.PyJWKClient(f"{settings.supabase_url}/auth/v1/.well-known/jwks.json")
+    # Supabase's JWKS endpoint requires the anon key as an apikey header.
+    headers = {"apikey": settings.supabase_anon_key} if settings.supabase_anon_key else {}
+    return jwt.PyJWKClient(
+        f"{settings.supabase_url}/auth/v1/.well-known/jwks.json",
+        headers=headers,
+    )
 
 
 def _decode_jwt(token: str) -> dict[str, Any]:
@@ -42,6 +47,9 @@ def _decode_jwt(token: str) -> dict[str, Any]:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token expired")
     except jwt.InvalidTokenError as e:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, f"Invalid token: {e}")
+    except jwt.PyJWKClientError as e:
+        # JWKS fetch failures must not 502 the request.
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, f"JWKS error: {e}")
 
 
 async def require_auth(
