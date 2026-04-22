@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { signUp } from '@/hooks/useAuth'
+import { signIn, signUp } from '@/hooks/useAuth'
 
 export function SignupPage() {
   const nav = useNavigate()
@@ -14,8 +14,9 @@ export function SignupPage() {
     setSubmitting(true)
     try {
       await signUp(email, password)
-      toast.success('Check your email to confirm, then sign in.')
-      nav('/login', { replace: true })
+      await signIn(email, password)
+      toast.success('Account created!')
+      nav('/', { replace: true })
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Signup failed')
     } finally {
