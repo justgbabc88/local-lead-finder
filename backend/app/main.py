@@ -48,6 +48,17 @@ async def validation_exception_handler(_: Request, exc: RequestValidationError):
     )
 
 
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    logging.getLogger("app").exception(
+        "Unhandled error on %s %s", request.method, request.url.path
+    )
+    return JSONResponse(
+        status_code=500,
+        content=err("internal_error", f"{type(exc).__name__}: {exc}"),
+    )
+
+
 @app.get("/health")
 async def health():
     return {"data": {"status": "ok"}, "error": None, "meta": None}
