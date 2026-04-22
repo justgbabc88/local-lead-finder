@@ -23,6 +23,8 @@ class Settings(BaseSettings):
 
     # CORS — comma-separated list of allowed origins
     cors_origins: str = "http://localhost:5173"
+    # Optional regex to match dynamic origins (e.g. Vercel preview deploys)
+    cors_origin_regex: str = ""
 
     # Misc
     log_level: str = "info"
